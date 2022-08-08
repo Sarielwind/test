@@ -1,0 +1,181 @@
+1. brackets match
+
+
+ method IS_BALANCED.
+
+
+    DATA: lv_len      TYPE i,
+      lv_brackets TYPE string,
+      lv_match    TYPE string,
+      lv_count    TYPE i,
+      lv_result   TYPE string,
+      lv_text     TYPE string,
+      flag        TYPE i,
+      lv_right    TYPE string.
+
+
+
+
+lv_brackets = iv_brackets.
+
+CONDENSE lv_brackets NO-GAPS.
+
+lv_len = strlen( lv_brackets ) .
+flag = 0.
+lv_count = 0.
+
+WHILE lv_count < lv_len.
+
+  lv_text = lv_brackets+lv_count(1).
+  lv_count = lv_count + 1.
+
+  IF lv_text = '(' OR lv_text = '{'  OR lv_text = '['.
+    IF lv_text = '('.
+      lv_right = ')'.
+    ELSEIF lv_text = '['.
+      lv_right = ']'.
+    ELSEIF lv_text = '{'.
+      lv_right = '}'.
+    ENDIF.
+
+    CONCATENATE lv_right lv_match INTO lv_match.
+    CLEAR lv_right.
+  ELSE.
+
+    lv_right = lv_match+0(1).
+    SHIFT lv_match.
+
+    IF lv_right IS INITIAL.
+      flag = 1.
+      EXIT.
+    ENDIF.
+
+    IF lv_right <> lv_text.
+      flag = 1.
+      EXIT.
+      CLEAR lv_right.
+    ENDIF.
+
+
+
+  ENDIF.
+
+ENDWHILE.
+
+IF flag = 0.
+  ev_result = abap_true.
+ELSE.
+  ev_result = abap_false.
+ENDIF.
+
+
+  endmethod.
+
+
+
+2. mail check
+
+method is_valid_address.
+
+
+DATA:lv_addr_check TYPE sx_address.
+
+
+CLEAR lv_addr_check.
+
+REPLACE ALL OCCURRENCES OF REGEX '<[()]*>' IN iv_address WITH space.
+
+REPLACE ALL OCCURRENCES OF REGEX '''' IN iv_address WITH space.
+
+lv_addr_check-type = 'INT'.
+
+lv_addr_check-address = iv_address.
+
+
+
+CALL FUNCTION 'SX_INTERNET_ADDRESS_TO_NORMAL'
+
+EXPORTING
+
+address_unstruct = lv_addr_check
+
+EXCEPTIONS
+
+error_address_type = 1
+
+error_address = 2
+
+error_group_address = 3
+
+OTHERS = 4.
+
+IF sy-subrc <> 0.
+
+  ev_result = abap_false.
+else.
+
+  ev_result = abap_true.
+
+ENDIF.
+
+ENDMETHOD.  
+
+
+	3. Require to configure SCOT
+
+method send_mail.
+  DATA: g_send      TYPE REF TO cl_bcs,
+        g_document  TYPE REF TO cl_document_bcs,
+        g_fail      TYPE REF TO cx_bcs,
+        l_main_text TYPE bcsy_text.
+
+  DATA: g_mail_title(50),
+        g_recipient      TYPE REF TO if_recipient_bcs,
+        l_mailto         TYPE ad_smtpadr,
+        l_main           TYPE soli.
+
+
+  l_mailto = iv_to.
+
+  g_mail_title = iv_subject.
+
+  l_main = iv_content.
+
+  APPEND l_main TO l_main_text.
+
+  TRY.
+      CLEAR g_send.
+
+      g_send = cl_bcs=>create_persistent( ).
+
+      g_document = cl_document_bcs=>create_document(
+      i_type = 'RAW'
+      i_text = l_main_text          "content
+      i_subject = g_mail_title ).
+
+
+      g_send->set_document( g_document ).
+
+      g_recipient = cl_cam_address_bcs=>create_internet_address( l_mailto ).
+
+      g_send->add_recipient( g_recipient ).
+
+      g_send->send( i_with_error_screen = 'X' ).
+      COMMIT WORK.
+      WAIT UP TO 2 SECONDS.
+      SUBMIT rsconn01 WITH mode = 'INT'
+                    WITH output = ''
+                    AND RETURN.
+      IF g_send IS INITIAL.
+        ev_result = abap_false.
+      ELSE.
+        ev_result = abap_true.
+      ENDIF.
+
+
+    CATCH cx_bcs INTO g_fail.
+
+  ENDTRY.
+
+
+ENDMETHOD.
